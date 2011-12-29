@@ -260,29 +260,30 @@ exports.readDatabaseFromBytes = function(userKeys, bytes, result, error) {
 		};
 		parser.onclosetag = function(t) {
 			var e = tagStack.pop();
-			
 			// Add extra info to make elements workable with js.
 			function getall(name) { return function() { return e.xml.children.filter(function(e) { return e.xml.name === name; }); } }
-			function getfirst(name) { return function() { return e.xml.children.filter(function(e) { return e.xml.name === name; })[0]; } }
-			function gettext(name) { return function() { return e.xml.children.filter(function(e) { return e.xml.name === name; })[0]._text; } }
+			function getfirst(name) { var all = getall(name); return function() { return all()[0]; } }
+			function gettext(name) { var first = getfirst(name); return function() { var f=first(); return f?f.xml._text:undefined; } }
+			function getattribute(name) { return function() { return e.xml.attributes.filter(function(a){ return a.name === name;})[0]; }; }
+			function getattributevalue(name) { var attribute=getattribute(name); return function() { var a=attribute(); return a?a.value:undefined; }; }
 			switch(e.xml.name) {
 				case 'String':
-					var isprotected = e.xml.attributes.filter(function(a) { return a.name === 'Protected' && a.value === 'True' }).length > 0;
-					var key = e.xml.children.filter(function(e) { return e.xml.name === 'Key' }).map(function(e) { return e.xml._text })[0];
-					var value = function() { return e.xml.children.filter(function(e) { return e.xml.name === 'Value' }).map(function(e) { return e.xml._text})[0]; };
-					if (key && value()) {
+					var isprotected = getattributevalue('Protected')() === 'True';
+					var key = gettext('Key')();
+					var value = gettext('Value')();
+					if (key && value) {
 						if (isprotected) {
-							var cryptedBytesLength = JXG.Util.Base64.decode(value()).length;
+							var cryptedBytesLength = JXG.Util.Base64.decode(value).length;
 							var randomBytes = randomStream(cryptedBytesLength);
 							e.xml.parent[key] = function() {
-								var bytes = UTF8ToBytes(JXG.Util.Base64.decode(value()));
+								var bytes = UTF8ToBytes(JXG.Util.Base64.decode(value));
 								for (var i=0;i<bytes.length; i++) {
 									bytes[i] = bytes[i] ^ randomBytes[i];
 								}
 								return BytesToUTF8(bytes);
 							};
 						} else {
-							e.xml.parent[key] = value;
+							e.xml.parent[key] = function() { return value; };
 						}
 					}
 					break;
